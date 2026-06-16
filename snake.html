@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>🐔 Chicken Game</title>
+<style>
+  /* Make everything sit in the middle of the page with a fun background. */
+  body {
+    background: #1e2a38;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+  }
+  h1 { margin-bottom: 5px; }
+  /* The game board. We draw the snake and apple inside this canvas. */
+  canvas {
+    background: #0f1722;
+    border: 4px solid #4caf50;
+    border-radius: 8px;
+  }
+  #message { font-size: 20px; height: 24px; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+  <!-- STEP 6: show the score at the top of the screen. -->
+  <h1>🐔 Chicken</h1>
+  <div>
+    <span id="score">Score: 0</span>
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    <span id="highscore">🏆 Best: 0</span>
+  </div>
+
+  <!-- STEP 1: the game window (a grid for the snake to move around in). -->
+  <canvas id="board" width="400" height="400"></canvas>
+
+  <div id="message">Press an arrow key to start!</div>
+
+<script>
+  // ---- Setting up the board ----
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+
+  const BOX = 20;                 // each square is 20 x 20 pixels
+  const TILES = canvas.width / BOX; // how many squares fit across (20)
+
+  // STEP 2: the snake starts in the middle. It is a list of squares.
+  // The first square in the list is the head.
+  let snake = [{ x: 10, y: 10 }];
+
+  // Which way the snake is moving. It starts still until a key is pressed.
+  let dx = 0;
+  let dy = 0;
+
+  // STEP 4: the bird seed! We scatter several pieces around the board.
+  const SEED_COUNT = 11;   // 1 to start + 10 more = lots of snacks for the chicken
+  let seeds = [];
+  while (seeds.length < SEED_COUNT) {
+    seeds.push(randomSeed());
+  }
+  makeOneSeedGolden();   // pick one lucky seed to be golden ✨
+
+  // Turn exactly one of the seeds golden (and make sure the rest are normal).
+  function makeOneSeedGolden() {
+    for (const s of seeds) s.golden = false;
+    const i = Math.floor(Math.random() * seeds.length);
+    seeds[i].golden = true;
+  }
+
+  // The chicks the chicken lays. Each one is an obstacle the chicken must avoid!
+  let chicks = [];
+
+  // Find a random square that is empty — not on the chicken, a seed, or a chick.
+  function randomEmptySpot() {
+    let spot;
+    let occupied = true;
+    while (occupied) {
+      spot = randomSeed();
+      occupied = false;
+      for (const part of snake)  if (part.x === spot.x && part.y === spot.y) occupied = true;
+      for (const s of seeds)     if (s.x === spot.x && s.y === spot.y)       occupied = true;
+      for (const c of chicks)    if (c.x === spot.x && c.y === spot.y)       occupied = true;
+    }
+    return spot;
+  }
+
+  let score = 0;
+  let gameOver = false;
+
+  // How many more squares the chicken still needs to grow. A normal seed adds 1,
+  // and the golden seed adds 3!
+  let growth = 0;
+
+  // ---- Remembering scores from past games ----
+  // localStorage is a little box the browser keeps even after you refresh.
+  // We store ALL past scores as a list, so we remember every game.
+  let allScores = JSON.parse(localStorage.getItem("snakeScores") || "[]");
+
+  // Show the best score we have saved so far (or 0 if there are none yet).
+  function showHighScore() {
+    const best = allScores.length > 0 ? Math.max(...allScores) : 0;
+    document.getElementById("highscore").textContent = "🏆 Best: " + best;
+  }
+  showHighScore();
+
+  // Pick a random square on the grid for a piece of bird seed.
+  function randomSeed() {
+    return {
+      x: Math.floor(Math.random() * TILES),
+      y: Math.floor(Math.random() * TILES)
+    };
+  }
+
+  // STEP 3: steer the snake with the arrow keys.
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "ArrowUp"    && dy === 0) { dx = 0;  dy = -1; }
+    if (event.key === "ArrowDown"  && dy === 0) { dx = 0;  dy = 1;  }
+    if (event.key === "ArrowLeft"  && dx === 0) { dx = -1; dy = 0;  }
+    if (event.key === "ArrowRight" && dx === 0) { dx = 1;  dy = 0;  }
+  });
+
+  // The main game loop. This runs over and over to move the snake.
+  function gameLoop() {
+    if (gameOver) return;
+
+    // If no arrow key has been pressed yet, the snake stays still and waits.
+    // (This stops the game from thinking the snake crashed into itself at the start.)
+    if (dx === 0 && dy === 0) return;
+
+    // Figure out where the head will go next.
+    const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+    // STEP 7: end the game if the snake hits a wall...
+    if (head.x < 0 || head.x >= TILES || head.y < 0 || head.y >= TILES) {
+      return endGame();
+    }
+    // ...or runs into its own body.
+    for (let i = 0; i < snake.length; i++) {
+      if (head.x === snake[i].x && head.y === snake[i].y) {
+        return endGame();
+      }
+    }
+    // ...or runs into one of the chicks it laid. 🐤
+    for (const c of chicks) {
+      if (head.x === c.x && head.y === c.y) {
+        return endGame();
+      }
+    }
+
+    // Add the new head to the front of the snake.
+    snake.unshift(head);
+
+    // Did the chicken eat a piece of bird seed?
+    // Look through all the seeds to see if the head landed on one.
+    for (let i = 0; i < seeds.length; i++) {
+      if (head.x === seeds[i].x && head.y === seeds[i].y) {
+        score++;
+        document.getElementById("score").textContent = "Score: " + score;
+        // The chicken lays a chick! It stays on the board as an obstacle. 🐤
+        chicks.push(randomEmptySpot());
+
+        if (seeds[i].golden) {
+          // STEP 5 (CORRECTED!): the GOLDEN seed makes the chicken 3 squares LONGER!
+          growth += 3;
+          seeds[i] = randomSeed();   // replace the eaten golden seed...
+          makeOneSeedGolden();       // ...and pick a brand new golden seed.
+        } else {
+          // A normal seed makes the chicken 1 square LONGER.
+          growth += 1;
+          seeds[i] = randomSeed();
+        }
+        break;
+      }
+    }
+
+    // If the chicken still has growing to do, keep the tail (it gets longer).
+    // Otherwise remove the tail so it stays the same length as it moves.
+    if (growth > 0) {
+      growth--;
+    } else {
+      snake.pop();
+    }
+
+    draw();
+  }
+
+  // Draw everything on the board.
+  function draw() {
+    // Clear the board.
+    ctx.fillStyle = "#0f1722";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw a grid of lines so we can clearly see each square.
+    ctx.strokeStyle = "#5b7aa6";
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i <= TILES; i++) {
+      // vertical lines
+      ctx.beginPath();
+      ctx.moveTo(i * BOX, 0);
+      ctx.lineTo(i * BOX, canvas.height);
+      ctx.stroke();
+      // horizontal lines
+      ctx.beginPath();
+      ctx.moveTo(0, i * BOX);
+      ctx.lineTo(canvas.width, i * BOX);
+      ctx.stroke();
+    }
+
+    // Draw each chick the chicken has laid. 🐤
+    ctx.font = (BOX - 2) + "px Arial";
+    ctx.textBaseline = "top";
+    for (const c of chicks) {
+      ctx.fillText("🐤", c.x * BOX, c.y * BOX);
+    }
+
+    // STEP 2: draw the chicken!
+    // Each body block is a baby chick 🐤 that follows along behind the head.
+    ctx.font = (BOX - 2) + "px Arial";
+    ctx.textBaseline = "top";
+    for (let i = 1; i < snake.length; i++) {
+      ctx.fillText("🐤", snake[i].x * BOX, snake[i].y * BOX);
+    }
+    // ...and the head is the mother chicken. 🐔
+    ctx.fillText("🐔", snake[0].x * BOX, snake[0].y * BOX);
+
+    // STEP 4: draw every piece of bird seed as a little dot.
+    // The golden seed is gold and a bit bigger so it stands out! ✨
+    for (const seed of seeds) {
+      ctx.fillStyle = seed.golden ? "#ffd700" : "#d2a679";
+      ctx.beginPath();
+      ctx.arc(
+        seed.x * BOX + BOX / 2,            // center x of the square
+        seed.y * BOX + BOX / 2,            // center y of the square
+        seed.golden ? BOX / 3 : BOX / 4,   // golden seed is bigger
+        0, Math.PI * 2
+      );
+      ctx.fill();
+    }
+  }
+
+  function endGame() {
+    gameOver = true;
+
+    // Save this game's score to our list, then write the whole list back
+    // into the browser's storage box so it is remembered after a refresh.
+    allScores.push(score);
+    localStorage.setItem("snakeScores", JSON.stringify(allScores));
+    showHighScore();
+
+    document.getElementById("message").textContent =
+      "Game Over! Final score: " + score +
+      ". You have played " + allScores.length + " games. Refresh to play again.";
+  }
+
+  // Run the game loop about 8 times per second. A bigger number = faster snake.
+  setInterval(gameLoop, 125);
+  draw();
+</script>
+</body>
+</html>
